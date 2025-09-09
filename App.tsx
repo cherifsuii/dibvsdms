@@ -7,7 +7,6 @@ import { Sender } from './types';
 import { generateResponse } from './services/geminiService';
 import { UniversityIcon, PlusIcon, LogoutIcon } from './components/icons';
 import { googleLogout, useGoogleLogin } from '@react-oauth/google';
-import { jwtDecode } from 'jwt-decode';
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -70,19 +69,27 @@ const App: React.FC = () => {
     }
   }, [messages, user]);
 
-  const handleLoginSuccess = useCallback((tokenResponse: any) => {
+  const handleLoginSuccess = useCallback(async (tokenResponse: any) => {
     try {
-      // The token is in the `access_token` field for this flow
-      const decoded: { name: string; email: string; picture: string } = jwtDecode(tokenResponse.access_token);
+      const accessToken = tokenResponse.access_token;
+      const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error('Failed to fetch user info');
+      }
+      const userInfo = await response.json();
       const userProfile: UserProfile = {
-        name: decoded.name,
-        email: decoded.email,
-        picture: decoded.picture,
+        name: userInfo.name,
+        email: userInfo.email,
+        picture: userInfo.picture,
       };
       localStorage.setItem('enstpUser', JSON.stringify(userProfile));
       setUser(userProfile);
     } catch (error) {
-      console.error("Failed to decode token or set user:", error);
+      console.error("Failed to fetch user info or set user:", error);
     }
   }, []);
 
