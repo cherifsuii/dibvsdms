@@ -2,14 +2,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatWindow } from './components/ChatWindow';
 import { MessageInput } from './components/MessageInput';
-import type { Message } from './types';
+import type { Message, UserProfile } from './types';
 import { Sender } from './types';
 import { generateResponse } from './services/geminiService';
-import { UniversityIcon, PlusIcon } from './components/icons';
+import { UniversityIcon, PlusIcon, LogoutIcon } from './components/icons';
+import { googleLogout, useGoogleLogin } from '@react-oauth/google';
+import { jwtDecode } from 'jwt-decode';
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [user, setUser] = useState<UserProfile | null>(null);
 
   const initialMessage: Message = {
     id: 'initial-message',
@@ -17,10 +20,28 @@ const App: React.FC = () => {
     sender: Sender.AI,
   };
 
-  // Effect to load messages from localStorage on initial render
+  // Effect to load user from localStorage on initial render
   useEffect(() => {
+    const storedUser = localStorage.getItem('enstpUser');
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error("Failed to parse user from localStorage", error);
+        localStorage.removeItem('enstpUser');
+      }
+    }
+  }, []);
+
+  // Effect to load messages from localStorage when user state changes
+  useEffect(() => {
+    if (!user) {
+      setMessages([initialMessage]);
+      return;
+    }
     try {
-      const savedMessages = localStorage.getItem('enstpChatHistory');
+      const chatHistoryKey = `enstpChatHistory_${user.email}`;
+      const savedMessages = localStorage.getItem(chatHistoryKey);
       if (savedMessages) {
         const parsedMessages = JSON.parse(savedMessages);
         if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
@@ -33,19 +54,53 @@ const App: React.FC = () => {
     }
 
     setMessages([initialMessage]);
-  }, []);
+  }, [user]);
 
   // Effect to save messages to localStorage whenever they change
   useEffect(() => {
-    // Do not save if messages array only contains the initial message and nothing else
-    if (messages.length > 1 || (messages.length === 1 && messages[0].id !== 'initial-message')) {
-      try {
-        localStorage.setItem('enstpChatHistory', JSON.stringify(messages));
-      } catch (error) {
-        console.error("Failed to save chat history to localStorage", error);
+    if (user) {
+      const chatHistoryKey = `enstpChatHistory_${user.email}`;
+      if (messages.length > 1 || (messages.length === 1 && messages[0].id !== 'initial-message')) {
+        try {
+          localStorage.setItem(chatHistoryKey, JSON.stringify(messages));
+        } catch (error) {
+          console.error("Failed to save chat history to localStorage", error);
+        }
       }
     }
-  }, [messages]);
+  }, [messages, user]);
+
+  const handleLoginSuccess = useCallback((tokenResponse: any) => {
+    try {
+      // The token is in the `access_token` field for this flow
+      const decoded: { name: string; email: string; picture: string } = jwtDecode(tokenResponse.access_token);
+      const userProfile: UserProfile = {
+        name: decoded.name,
+        email: decoded.email,
+        picture: decoded.picture,
+      };
+      localStorage.setItem('enstpUser', JSON.stringify(userProfile));
+      setUser(userProfile);
+    } catch (error) {
+      console.error("Failed to decode token or set user:", error);
+    }
+  }, []);
+
+  const login = useGoogleLogin({
+    onSuccess: handleLoginSuccess,
+    onError: (error) => console.error('Login Failed:', error),
+    scope: 'profile email',
+    flow: 'implicit' // Using implicit flow for simplicity
+  });
+
+  const handleLogout = useCallback(() => {
+    if (window.confirm("Are you sure you want to log out?")) {
+      googleLogout();
+      localStorage.removeItem('enstpUser');
+      setUser(null);
+      // The useEffect hook dependent on `user` will handle resetting the messages
+    }
+  }, []);
 
   const getAiResponse = useCallback(async (query: string) => {
     setIsLoading(true);
@@ -87,7 +142,6 @@ const App: React.FC = () => {
   }, [isLoading, getAiResponse]);
 
   const handleRetry = useCallback(async (failedQuery: string) => {
-    // Remove the error message from the list before retrying
     setMessages((prevMessages) => prevMessages.filter(msg => !msg.error));
     await getAiResponse(failedQuery);
   }, [getAiResponse]);
@@ -100,16 +154,18 @@ const App: React.FC = () => {
           : msg
       )
     );
-    // In a real application, you would send this feedback to a logging service
     console.log(`Feedback submitted for message ${messageId}: ${feedback}`);
   }, []);
 
   const handleNewChat = useCallback(() => {
     if (window.confirm("Are you sure you want to start a new chat? Your current conversation will be erased.")) {
-      localStorage.removeItem('enstpChatHistory');
+      if (user) {
+        const chatHistoryKey = `enstpChatHistory_${user.email}`;
+        localStorage.removeItem(chatHistoryKey);
+      }
       setMessages([initialMessage]);
     }
-  }, []);
+  }, [user]);
 
   return (
     <div className="flex h-screen font-sans bg-gray-50 text-gray-800">
@@ -120,14 +176,37 @@ const App: React.FC = () => {
             <UniversityIcon className="h-8 w-8 text-orange-600 mr-3" />
             <h1 className="text-2xl font-bold text-gray-700">ENSTP Major Selection Assistant</h1>
           </div>
-          <button
-            onClick={handleNewChat}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
-            aria-label="Start a new chat"
-          >
-            <PlusIcon className="h-5 w-5" />
-            <span className="hidden sm:inline">New Chat</span>
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={handleNewChat}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+              aria-label="Start a new chat"
+            >
+              <PlusIcon className="h-5 w-5" />
+              <span className="hidden sm:inline">New Chat</span>
+            </button>
+
+            {user ? (
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <div className="text-sm font-medium text-gray-800">{user.name}</div>
+                  <div className="text-xs text-gray-500">{user.email}</div>
+                </div>
+                <img src={user.picture} alt="User profile" className="h-10 w-10 rounded-full" />
+                <button
+                  onClick={handleLogout}
+                  className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"
+                  aria-label="Logout"
+                >
+                    <LogoutIcon className="h-5 w-5" />
+                </button>
+              </div>
+            ) : (
+               <button onClick={() => login()} className="px-4 py-2 text-sm font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500">
+                  Login with Google
+                </button>
+            )}
+          </div>
         </header>
         <ChatWindow messages={messages} isLoading={isLoading} onRetry={handleRetry} onFeedback={handleFeedback} />
         <MessageInput onSendMessage={handleSendMessage} isLoading={isLoading} />

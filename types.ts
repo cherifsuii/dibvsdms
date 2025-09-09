@@ -13,3 +13,9 @@ export interface Message {
   feedbackSubmitted?: boolean;
   source?: string;
 }
+
+export interface UserProfile {
+  name: string;
+  email: string;
+  picture: string;
+}
