@@ -1,0 +1,5 @@
+{
+  "name": "ENSTP Major Selection Assistant",
+  "description": "An AI-powered educational chatbot to help ENSTP students choose between the DMS and DIB civil engineering departments. It provides detailed information on curriculum, career prospects, and department specializations.",
+  "requestFramePermissions": []
+}
