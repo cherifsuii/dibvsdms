@@ -20,7 +20,6 @@ const App: React.FC = () => {
     sender: Sender.AI,
   };
 
-  // Effect to load user from localStorage on initial render
   useEffect(() => {
     const storedUser = localStorage.getItem('enstpUser');
     if (storedUser) {
@@ -33,7 +32,6 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Effect to load messages from localStorage when user state changes
   useEffect(() => {
     if (!user) {
       setMessages([initialMessage]);
@@ -56,7 +54,6 @@ const App: React.FC = () => {
     setMessages([initialMessage]);
   }, [user]);
 
-  // Effect to save messages to localStorage whenever they change
   useEffect(() => {
     if (user) {
       const chatHistoryKey = `enstpChatHistory_${user.email}`;
@@ -72,7 +69,6 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = useCallback((tokenResponse: any) => {
     try {
-      // The token is in the `access_token` field for this flow
       const decoded: { name: string; email: string; picture: string } = jwtDecode(tokenResponse.access_token);
       const userProfile: UserProfile = {
         name: decoded.name,
@@ -90,7 +86,7 @@ const App: React.FC = () => {
     onSuccess: handleLoginSuccess,
     onError: (error) => console.error('Login Failed:', error),
     scope: 'profile email',
-    flow: 'implicit' // Using implicit flow for simplicity
+    flow: 'implicit'
   });
 
   const handleLogout = useCallback(() => {
@@ -98,7 +94,6 @@ const App: React.FC = () => {
       googleLogout();
       localStorage.removeItem('enstpUser');
       setUser(null);
-      // The useEffect hook dependent on `user` will handle resetting the messages
     }
   }, []);
 

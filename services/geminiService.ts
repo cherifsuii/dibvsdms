@@ -33,7 +33,7 @@ Based on the context provided, generate the JSON response.
         });
         
         let responseText = response.text.trim();
-        // The model sometimes wraps the JSON in ```json ... ```, so we strip it.
+        // The model may wrap the JSON in a markdown block, so we extract it.
         if (responseText.startsWith('```json')) {
             responseText = responseText.substring(7, responseText.length - 3).trim();
         }
